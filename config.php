@@ -1,10 +1,10 @@
 <?php
 
-define('DB_HOST', 'sql213.infinityfree.com');
+define('DB_HOST', '');
 define('DB_PORT', 3306);
-define('DB_USER', 'if0_43308636');
-define('DB_PASS', 'rezakurnia07');
-define('DB_NAME', 'if0_43308636_absensi_qr');
+define('DB_USER', '');
+define('DB_PASS', '');
+define('DB_NAME', '');
 
 function getPDO(): PDO {
   static $pdo = null;
