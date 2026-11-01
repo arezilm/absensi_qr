@@ -227,6 +227,55 @@ const Storage = (() => {
     return changed;
   }
 
+  function cleanupStaleReservasiManual() {
+    const today = todayLocalISO();
+    let changed = false;
+    const keep = [];
+
+    reservasiManual.forEach((r) => {
+      const tgl = Utils.toLocalISODate(r.tanggal || r.createdAt);
+
+      // Belum lewat → simpan
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(tgl) || tgl >= today) {
+        keep.push(r);
+        return;
+      }
+
+      // Sudah lewat → cek duplikat di arsip
+      const exists = reservasiArchive.some(
+        (a) =>
+          a.karyawanId === r.karyawanId &&
+          Utils.toLocalISODate(a.tanggal) === tgl
+      );
+
+      if (!exists) {
+        const k = karyawan.find((x) => x.id === r.karyawanId);
+        reservasiArchive.push({
+          id: 'RV-ARCH-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+          kode: r.kode || '',
+          karyawanId: r.karyawanId,
+          nama: r.nama,
+          bagian: (k && k.bagian) || '',
+          tanggal: r.tanggal,
+          lembur: r.lembur || 'Tidak',
+          tindakan: r.tindakan || 'Ambil',
+          keterangan: r.keterangan || 'Siklus harian',
+          released: !!r.released,
+          releasedAt: r.releasedAt || null,
+          archivedAt: new Date().toISOString(),
+        });
+      }
+
+      changed = true;
+    });
+
+    if (changed) {
+      reservasiManual = keep;
+      save();
+    }
+    return changed;
+  }
+
   // ------------------------------------------------------------
   // SIKLUS OVERTIME - auto-release
   // ------------------------------------------------------------
@@ -289,6 +338,7 @@ const Storage = (() => {
     isToday: isToday,
     archiveStaleMeal: archiveStaleMeal,
     cleanupStaleMeals: cleanupStaleMeals,
+    cleanupStaleReservasiManual: cleanupStaleReservasiManual,
     todayLocalISO: todayLocalISO,
     autoReleaseStaleOvertime: autoReleaseStaleOvertime
   };
