@@ -15,11 +15,40 @@ const Dashboard = (() => {
       Storage.cleanupStaleMeals();
     }
 
+    // Safety net: arsipkan reservasi manual kemarin (cegah penumpukan)
+    if (typeof Storage.cleanupStaleReservasiManual === 'function') {
+      Storage.cleanupStaleReservasiManual();
+    }
+
     const list = Storage.getKaryawan();
     const total = list.length;
     const hadir = list.filter((k) => Utils.isToday(k.absenAt)).length;
-    const makan = list.filter((k) => Utils.isToday(k.makanAt)).length;
     const belum = total - hadir;
+
+    const today = Storage.todayLocalISO();
+    // Hitung per KUPON (bukan per karyawan), supaya kupon tambahan
+    // setelah reset overtime ikut terhitung. Kunci unik = kode kupon;
+    // jika kode kosong, pakai id record agar tidak hitung ganda.
+    const kuponKeys = new Set();
+
+    list.forEach((k) => {
+      if (!Utils.isToday(k.makanAt)) return;
+      kuponKeys.add(k.kuponKode ? 'K:' + k.kuponKode : 'KRY:' + k.id);
+    });
+
+    Storage.getReservasiManual().forEach((r) => {
+      if (!r || !r.karyawanId) return;
+      if (Utils.toLocalISODate(r.tanggal || r.createdAt) !== today) return;
+      kuponKeys.add(r.kode ? 'K:' + r.kode : 'RM:' + r.id);
+    });
+
+    Storage.getReservasiArchive().forEach((r) => {
+      if (!r || !r.karyawanId) return;
+      if (Utils.toLocalISODate(r.tanggal || r.archivedAt) !== today) return;
+      kuponKeys.add(r.kode ? 'K:' + r.kode : 'RA:' + r.id);
+    });
+
+    const makan = kuponKeys.size;
 
     setText('statTotal', total);
     setText('statHadir', hadir);
