@@ -37,6 +37,26 @@ const Utils = (() => {
   }
 
   /* ------------------------------------------------------------
+     [3.b] NORMALISASI TANGGAL → 'YYYY-MM-DD' pada zona waktu LOKAL
+         - 'YYYY-MM-DD' murni dikembalikan apa adanya
+         - ISO UTC (…T20:00:00.000Z) dikonversi ke tanggal lokal
+         JANGAN pakai String(x).slice(0, 10) pada ISO UTC: di WIB
+         (UTC+7) hasilnya bisa tanggal kemarin dan membuat hitungan
+         makan di Dashboard hilang.
+     ------------------------------------------------------------ */
+  function toLocalISODate(value) {
+    if (!value) return '';
+    const s = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const d = value instanceof Date ? value : new Date(s);
+    if (Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  /* ------------------------------------------------------------
      [4] CEK STATUS KARYAWAN — non-aktif = tolak operasi
      ------------------------------------------------------------ */
   function isKaryawanNonAktif(karyawan) {
@@ -138,6 +158,7 @@ const Utils = (() => {
     escapeHtml,
     formatWaktu,
     isToday,
+    toLocalISODate,
     isKaryawanNonAktif,
     nextKodeTransaksi,
     nextKodeOvertime,
