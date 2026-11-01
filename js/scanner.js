@@ -85,8 +85,7 @@ const Scanner = (() => {
     const today = todayLocalISO();
     return Storage.getReservasiManual().some((r) => {
       if (r.karyawanId !== karyawanId) return false;
-      const tgl = String(r.tanggal || '').slice(0, 10);
-      return tgl === today;
+      return Utils.toLocalISODate(r.tanggal || r.createdAt) === today;
     });
   }
 
