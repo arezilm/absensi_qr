@@ -332,7 +332,7 @@ const Reservasi = (() => {
       if (r.karyawanId !== karyawan.id) return false;
       if (r.lembur === 'Ya') return false;
       if (String(r.keterangan || '').toLowerCase().includes('lembur')) return false;
-      const archTanggal = String(r.tanggal || r.archivedAt || '').slice(0, 10);
+      const archTanggal = Utils.toLocalISODate(r.tanggal || r.archivedAt);
       return archTanggal === tanggal;
     });
     if (duplicateArchive) {
@@ -659,58 +659,89 @@ const ReservasiOvertime = (() => {
       return;
     }
 
-    /* --- Cegah overtime ganda untuk tanggal yang sama --- */
+    /* --- Reset hanya 1× per karyawan per tanggal (status apa pun) --- */
     const duplicateOvertime = Storage.getOvertime().find(
       (r) =>
         r.karyawanId === karyawan.id &&
-        r.status === 'aktif' &&
         String(r.tanggal || '').slice(0, 10) === tanggal
     );
     if (duplicateOvertime) {
       alert(
-        `Overtime untuk ${karyawan.nama} (${karyawan.id}) pada tanggal ${tanggal} sudah aktif ` +
+        `Reset/overtime untuk ${karyawan.nama} (${karyawan.id}) pada tanggal ${tanggal} sudah pernah dilakukan ` +
         `(kode: ${duplicateOvertime.id}).\n\n` +
-        'Satu tanggal hanya boleh memiliki 1 overtime aktif.\n\n' +
-        'Jika perlu menambah lembur lagi, selesaikan dulu overtime yang aktif atau gunakan tanggal lain.'
+        'Reset hanya berlaku 1× per karyawan per tanggal dan tidak dapat diulang.'
       );
       idEl.focus();
       return;
     }
 
+    const today = H.todayISO();
+    const isHariIni = tanggal === today;
+
+    /* --- Cegah reset ulang hari ini (mis. overtime sempat dihapus) --- */
+    if (isHariIni) {
+      const sudahReset = Storage.getReservasiArchive().some(
+        (r) =>
+          r.karyawanId === karyawan.id &&
+          r.lembur === 'Ya' &&
+          Utils.toLocalISODate(r.archivedAt) === today
+      );
+      if (sudahReset) {
+        alert(
+          `${karyawan.nama} (${karyawan.id}) sudah pernah direset hari ini.\n\n` +
+          'Reset hanya berlaku untuk 1× pengambilan makan tambahan.'
+        );
+        idEl.focus();
+        return;
+      }
+    }
+
+    // Kupon basi (kemarin) diarsipkan sebagai siklus harian, bukan lembur
+    Storage.archiveStaleMeal(karyawan);
+
+    // Kupon aktif HARI INI: via scan, atau via reservasi manual
+    const makanScan = isHariIni && !!karyawan.makan && Utils.isToday(karyawan.makanAt);
+    const manualHariIni = isHariIni
+      ? Storage.getReservasiManual().filter(
+          (r) =>
+            r.karyawanId === karyawan.id &&
+            Utils.toLocalISODate(r.tanggal || r.createdAt) === today
+        )
+      : [];
+    const adaKupon = makanScan || manualHariIni.length > 0;
+
     let msg = `Reset reservasi untuk ${karyawan.nama} (${karyawan.id})?\n\n`;
-    if (karyawan.makan) {
+    if (adaKupon) {
       msg +=
-        'Reservasi saat ini akan DIARSIPKAN (tetap tersimpan di daftar Reservasi) ' +
-        'dan karyawan dapat scan kupon makan kembali atau ditambahkan via Tambah Reservasi manual (hanya 1×).\n\n';
+        'Reservasi hari ini akan DIARSIPKAN (tetap tersimpan di daftar Reservasi) ' +
+        'dan karyawan dapat mengambil kupon makan tambahan HANYA 1× lewat scan ATAU Tambah Reservasi manual.\n\n';
     } else {
       msg +=
-        'Karyawan belum memiliki reservasi aktif. Hanya ditandai sebagai lembur.\n\n';
+        'Karyawan belum memiliki reservasi aktif hari ini. Hanya ditandai sebagai lembur.\n\n';
     }
     msg += 'Lanjutkan?';
 
     if (!confirm(msg)) return;
 
     let archived = false;
+    const nowIso = new Date().toISOString();
+    const newArchId = () =>
+      'RV-ARCH-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 
-    if (karyawan.makan) {
-      // Arsipkan reservasi aktif dengan status release yang SESUAI
-      // kondisi asli, bukan hardcoded true.
-      const wasReleased = karyawan.kuponReleased !== false;
-      const releasedAt = karyawan.kuponReleasedAt || karyawan.makanAt || new Date().toISOString();
-
+    if (makanScan) {
       Storage.getReservasiArchive().push({
-        id: 'RV-ARCH-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        id: newArchId(),
         kode: karyawan.kuponKode || '',
         karyawanId: karyawan.id,
         nama: karyawan.nama,
         bagian: karyawan.bagian || '',
-        tanggal: karyawan.makanAt || new Date().toISOString(),
+        tanggal: karyawan.makanAt || nowIso,
         lembur: 'Ya',
         tindakan: 'Ambil',
         keterangan: 'Diarsipkan untuk lembur',
-        released: wasReleased,
-        releasedAt,
-        archivedAt: new Date().toISOString(),
+        released: karyawan.kuponReleased !== false,
+        releasedAt: karyawan.kuponReleasedAt || karyawan.makanAt || nowIso,
+        archivedAt: nowIso,
       });
       archived = true;
 
@@ -719,6 +750,29 @@ const ReservasiOvertime = (() => {
       delete karyawan.kuponKode;
       delete karyawan.kuponReleased;
       delete karyawan.kuponReleasedAt;
+    }
+
+    if (manualHariIni.length > 0) {
+      manualHariIni.forEach((r) => {
+        Storage.getReservasiArchive().push({
+          id: newArchId(),
+          kode: r.kode || '',
+          karyawanId: karyawan.id,
+          nama: karyawan.nama,
+          bagian: karyawan.bagian || '',
+          tanggal: r.tanggal || nowIso,
+          lembur: 'Ya',
+          tindakan: r.tindakan || 'Ambil',
+          keterangan: 'Diarsipkan untuk lembur',
+          released: !!r.released,
+          releasedAt: r.releasedAt || null,
+          archivedAt: nowIso,
+        });
+      });
+      Storage.setReservasiManual(
+        Storage.getReservasiManual().filter((r) => !manualHariIni.includes(r))
+      );
+      archived = true;
     }
 
     Storage.getOvertime().unshift({
@@ -744,7 +798,7 @@ const ReservasiOvertime = (() => {
     if (archived) {
       alert(
         `Reservasi ${karyawan.nama} berhasil direset.\n\n` +
-        'Karyawan dapat mengambil kupon makan kembali (hanya 1×) melalui:\n' +
+        'Karyawan dapat mengambil kupon makan tambahan (hanya 1×) melalui:\n' +
         '  • Scan QR di Dashboard, atau\n' +
         '  • Tambah Reservasi Manual di menu Reservasi.\n\n' +
         'Keduanya tidak dapat dilakukan bersamaan untuk tanggal yang sama.\n\n' +
