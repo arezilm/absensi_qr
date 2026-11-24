@@ -2,6 +2,11 @@
 
 require_once __DIR__ . '/config.php';
 
+// Sesi login (dipakai untuk membatasi endpoint khusus Admin)
+ini_set('session.gc_maxlifetime', '43200');
+session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'httponly' => true, 'samesite' => 'Lax']);
+session_start();
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
@@ -18,6 +23,9 @@ try {
     case 'bootstrap': handleBootstrap($pdo); break;
     case 'sync':      handleSync($pdo);      break;
     case 'login':     handleLogin($pdo);     break;
+    case 'logout':    handleLogout();        break;
+    case 'get_jam_kerja':  handleGetJamKerja($pdo);  break;
+    case 'save_jam_kerja': handleSaveJamKerja($pdo); break;
     case 'get_users':    handleGetUsers($pdo);    break;
     case 'save_user':    handleSaveUser($pdo);    break;
     case 'delete_user':  handleDeleteUser($pdo);  break;
@@ -64,6 +72,7 @@ function boolColumns(): array {
     'reservasi_manual'   => ['released'],
     'reservasi_archive'  => ['released'],
     'overtime'           => ['auto_released'],
+    'presensi'           => ['lembur'],
   ];
 }
 function rowsToCamel(array $rows, string $table): array {
@@ -83,6 +92,18 @@ function rowsToCamel(array $rows, string $table): array {
 function b($v): int { return $v ? 1 : 0; }
 function n($v)     { return ($v === null || $v === '') ? null : $v; }
 
+function requireAdmin(): void {
+  if (($_SESSION['role'] ?? '') !== 'admin') {
+    jsonErr(403, 'Akses ditolak. Hanya Admin yang dapat mengelola user. Jika Anda Admin, silakan logout lalu login ulang.');
+  }
+}
+
+function handleLogout(): void {
+  $_SESSION = [];
+  if (session_status() === PHP_SESSION_ACTIVE) session_destroy();
+  jsonOk();
+}
+
 function reqId(array $r): string {
   return trim((string)($r['id'] ?? ''));
 }
@@ -90,13 +111,41 @@ function reqId(array $r): string {
 /* ============================================================
    ACTION: bootstrap
    ============================================================ */
+function ensureSchema(PDO $pdo): void {
+  // Auto-migrasi: kolom presensi pulang (aman dijalankan berulang)
+  $c = $pdo->query("SHOW COLUMNS FROM karyawan LIKE 'pulang_at'")->fetch();
+  if (!$c) {
+    $pdo->exec("ALTER TABLE karyawan ADD COLUMN pulang_at VARCHAR(30) NULL AFTER absen_at");
+  }
+  // Tabel presensi (riwayat absensi masuk/pulang)
+  $pdo->exec("CREATE TABLE IF NOT EXISTS presensi (
+    id VARCHAR(80) PRIMARY KEY,
+    karyawan_id VARCHAR(50) NULL,
+    nama VARCHAR(150) NULL,
+    bagian VARCHAR(100) NULL,
+    tanggal VARCHAR(20) NULL,
+    masuk_at VARCHAR(30) NULL,
+    keluar_at VARCHAR(30) NULL,
+    lembur TINYINT(1) NOT NULL DEFAULT 0,
+    INDEX idx_pr_karyawan (karyawan_id),
+    INDEX idx_pr_tanggal (tanggal)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+  // Tabel pengaturan (key-value), dipakai untuk jam kerja
+  $pdo->exec("CREATE TABLE IF NOT EXISTS pengaturan (
+    kunci VARCHAR(50) PRIMARY KEY,
+    nilai VARCHAR(255) NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
 function handleBootstrap(PDO $pdo): void {
+  ensureSchema($pdo);
   $karyawan         = $pdo->query('SELECT * FROM karyawan ORDER BY id ASC')->fetchAll();
   $riwayat          = $pdo->query('SELECT waktu, nama, jenis FROM riwayat ORDER BY id ASC LIMIT 100')->fetchAll();
   $jenisKartu       = $pdo->query('SELECT * FROM jenis_kartu ORDER BY id ASC')->fetchAll();
   $reservasiManual  = $pdo->query('SELECT * FROM reservasi_manual ORDER BY created_at DESC')->fetchAll();
   $reservasiArchive = $pdo->query('SELECT * FROM reservasi_archive ORDER BY archived_at DESC')->fetchAll();
   $overtime         = $pdo->query('SELECT * FROM overtime ORDER BY created_at DESC')->fetchAll();
+  $presensi         = $pdo->query('SELECT * FROM presensi ORDER BY tanggal DESC, masuk_at DESC')->fetchAll();
 
   echo json_encode([
     'ok'                => true,
@@ -106,6 +155,8 @@ function handleBootstrap(PDO $pdo): void {
     'reservasiManual'   => rowsToCamel($reservasiManual, 'reservasi_manual'),
     'reservasiArchive'  => rowsToCamel($reservasiArchive, 'reservasi_archive'),
     'overtime'          => rowsToCamel($overtime, 'overtime'),
+    'presensi'          => rowsToCamel($presensi, 'presensi'),
+    'jamKerja'          => loadJamKerja($pdo) ?: new stdClass(),
   ], JSON_UNESCAPED_UNICODE);
   exit;
 }
@@ -124,6 +175,7 @@ function handleSync(PDO $pdo): void {
     if (isset($data['reservasiManual']))  syncReservasiManual($pdo, $data['reservasiManual']);
     if (isset($data['reservasiArchive'])) syncReservasiArchive($pdo, $data['reservasiArchive']);
     if (isset($data['overtime']))         syncOvertime($pdo, $data['overtime']);
+    if (isset($data['presensi']))         syncPresensi($pdo, $data['presensi']);
     $pdo->commit();
   } catch (Throwable $e) {
     $pdo->rollBack();
@@ -136,10 +188,10 @@ function syncKaryawan(PDO $pdo, array $rows): void {
   $pdo->exec('DELETE FROM karyawan');
   $sql = 'INSERT INTO karyawan
     (id, nama, kategori, posisi, bagian, status, foto,
-     absen, absen_at, makan, makan_at,
+     absen, absen_at, pulang_at, makan, makan_at,
      kupon_kode, kupon_released, kupon_released_at,
      kartu_cetak, kartu_cetak_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)';
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)';
   $stmt = $pdo->prepare($sql);
   foreach ($rows as $r) {
     if (!is_array($r)) continue;
@@ -156,6 +208,7 @@ function syncKaryawan(PDO $pdo, array $rows): void {
       n($r['foto']     ?? null),
       b($r['absen'] ?? false),
       n($r['absenAt'] ?? null),
+      n($r['pulangAt'] ?? null),
       b($r['makan'] ?? false),
       n($r['makanAt'] ?? null),
       n($r['kuponKode'] ?? null),
@@ -272,6 +325,104 @@ function syncOvertime(PDO $pdo, array $rows): void {
   }
 }
 
+function syncPresensi(PDO $pdo, array $rows): void {
+  $pdo->exec('DELETE FROM presensi');
+  $stmt = $pdo->prepare('INSERT INTO presensi
+    (id, karyawan_id, nama, bagian, tanggal, masuk_at, keluar_at, lembur)
+    VALUES (?,?,?,?,?,?,?,?)');
+  foreach ($rows as $r) {
+    if (!is_array($r)) continue;
+    $id = reqId($r);
+    if ($id === '') continue;
+    $stmt->execute([
+      $id,
+      $r['karyawanId'] ?? null,
+      $r['nama']       ?? null,
+      n($r['bagian']   ?? null),
+      n($r['tanggal']  ?? null),
+      n($r['masukAt']  ?? null),
+      n($r['keluarAt'] ?? null),
+      b($r['lembur']   ?? false),
+    ]);
+  }
+}
+
+/* ============================================================
+   JAM KERJA (pengaturan masuk / pulang / lembur)
+   ============================================================ */
+function loadJamKerja(PDO $pdo): array {
+  $rows = $pdo->query("SELECT kunci, nilai FROM pengaturan
+                       WHERE kunci IN ('jam_masuk','jam_pulang','lembur_setelah_menit')")->fetchAll();
+  $map = [];
+  foreach ($rows as $r) $map[$r['kunci']] = $r['nilai'];
+
+  $out = [];
+  if (isset($map['jam_masuk']))           $out['masuk']              = $map['jam_masuk'];
+  if (isset($map['jam_pulang']))          $out['pulang']             = $map['jam_pulang'];
+  if (isset($map['lembur_setelah_menit'])) $out['lemburSetelahMenit'] = (float)$map['lembur_setelah_menit'];
+  return $out;
+}
+
+function jamKeDetikPhp(string $jam): int {
+  $p = array_map('intval', explode(':', $jam));
+  return ($p[0] ?? 0) * 3600 + ($p[1] ?? 0) * 60 + ($p[2] ?? 0);
+}
+
+// Admin otomatis boleh; user biasa harus punya izin jamKerja.edit
+function canEditJamKerja(PDO $pdo): bool {
+  $uid = (int)($_SESSION['uid'] ?? 0);
+  if ($uid <= 0) return false;
+  $stmt = $pdo->prepare('SELECT role, is_active, permissions FROM users WHERE id = ? LIMIT 1');
+  $stmt->execute([$uid]);
+  $u = $stmt->fetch();
+  if (!$u || (int)$u['is_active'] === 0) return false;
+  if (($u['role'] ?? '') === 'admin') return true;
+  $p = $u['permissions'] ? json_decode($u['permissions'], true) : [];
+  return is_array($p) && (($p['jamKerja']['edit'] ?? false) === true);
+}
+
+function handleGetJamKerja(PDO $pdo): void {
+  ensureSchema($pdo);
+  jsonOk(['jamKerja' => loadJamKerja($pdo) ?: new stdClass()]);
+}
+
+function handleSaveJamKerja(PDO $pdo): void {
+  ensureSchema($pdo);
+  if (!canEditJamKerja($pdo)) {
+    jsonErr(403, 'Anda tidak memiliki hak akses untuk mengubah jam kerja. Jika Anda seharusnya punya akses, silakan logout lalu login ulang.');
+  }
+
+  $d      = readBody();
+  $re     = '/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/';
+  $masuk  = trim((string)($d['masuk']  ?? ''));
+  $pulang = trim((string)($d['pulang'] ?? ''));
+  $menit  = $d['lemburSetelahMenit'] ?? null;
+
+  if (!preg_match($re, $masuk))  jsonErr(400, 'Format jam masuk tidak valid.');
+  if (!preg_match($re, $pulang)) jsonErr(400, 'Format jam pulang tidak valid.');
+  if (!is_numeric($menit) || (float)$menit < 0 || (float)$menit > 1440) {
+    jsonErr(400, 'Batas lembur harus berupa angka 0 - 1440 menit.');
+  }
+  if (jamKeDetikPhp($pulang) <= jamKeDetikPhp($masuk)) {
+    jsonErr(400, 'Jam pulang harus lebih besar dari jam masuk.');
+  }
+
+  $stmt = $pdo->prepare('INSERT INTO pengaturan (kunci, nilai) VALUES (?, ?)
+                         ON DUPLICATE KEY UPDATE nilai = VALUES(nilai)');
+  $pdo->beginTransaction();
+  try {
+    $stmt->execute(['jam_masuk', $masuk]);
+    $stmt->execute(['jam_pulang', $pulang]);
+    $stmt->execute(['lembur_setelah_menit', (string)(float)$menit]);
+    $pdo->commit();
+  } catch (Throwable $e) {
+    $pdo->rollBack();
+    throw $e;
+  }
+
+  jsonOk(['jamKerja' => loadJamKerja($pdo)]);
+}
+
 /* ============================================================
    ACTION: login
    ============================================================ */
@@ -308,6 +459,10 @@ function handleLogin(PDO $pdo): void {
     jsonErr(403, 'Akun Anda dinonaktifkan. Hubungi Admin.');
   }
 
+  session_regenerate_id(true);
+  $_SESSION['uid']  = (int)$u['id'];
+  $_SESSION['role'] = $u['role'] ?? 'user';
+
   jsonOk([
     'user' => [
       'id'          => $u['id'],
@@ -323,6 +478,7 @@ function handleLogin(PDO $pdo): void {
    ACTION: get_users (Hanya untuk Admin)
    ============================================================ */
 function handleGetUsers(PDO $pdo): void {
+  requireAdmin();
   // Catatan: Di produksi, pastikan ada validasi token/session admin di sini.
   $stmt = $pdo->query('SELECT id, username, name, role, is_active, permissions FROM users ORDER BY id ASC');
   $users = $stmt->fetchAll();
@@ -339,6 +495,7 @@ function handleGetUsers(PDO $pdo): void {
    ACTION: save_user (Tambah/Edit)
    ============================================================ */
 function handleSaveUser(PDO $pdo): void {
+  requireAdmin();
   $data = readBody();
   $id = isset($data['id']) ? (int)$data['id'] : 0;
   $username = trim($data['username'] ?? '');
@@ -380,9 +537,11 @@ function handleSaveUser(PDO $pdo): void {
    ACTION: delete_user
    ============================================================ */
 function handleDeleteUser(PDO $pdo): void {
+  requireAdmin();
   $data = readBody();
   $id = isset($data['id']) ? (int)$data['id'] : 0;
   if ($id <= 0) jsonErr(400, 'ID tidak valid.');
+  if ($id === (int)($_SESSION['uid'] ?? 0)) jsonErr(400, 'Tidak dapat menghapus akun yang sedang digunakan.');
   
   $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$id]);
   jsonOk();
