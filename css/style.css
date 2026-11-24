@@ -332,18 +332,55 @@ input.input-error:focus {
   border-bottom: none;
 }
 
-#tabelKaryawan th.sortable {
+/* ---------- [6.2b] Tabel Presensi (garis horizontal & vertikal) ---------- */
+#tabelPresensi {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#tabelPresensi th,
+#tabelPresensi td {
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+#tabelPresensi th:last-child,
+#tabelPresensi td:last-child {
+  border-right: none;
+}
+
+#tabelPresensi thead th {
+  border-bottom: 2px solid #cbd5e1;
+  background: #f1f5f9;
+  color: #334155;
+}
+
+#tabelPresensi tbody tr:last-child td {
+  border-bottom: none;
+}
+
+#tabelKaryawan th.sortable,
+#tabelFoto th.sortable,
+#tabelKartu th.sortable,
+#tabelJenisKartu th.sortable {
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
 }
 
-#tabelKaryawan th.sortable:hover {
+#tabelKaryawan th.sortable:hover,
+#tabelFoto th.sortable:hover,
+#tabelKartu th.sortable:hover,
+#tabelJenisKartu th.sortable:hover {
   background: #e2e8f0;
   color: #0f172a;
 }
 
-#tabelKaryawan th.sortable::after {
+#tabelKaryawan th.sortable::after,
+#tabelFoto th.sortable::after,
+#tabelKartu th.sortable::after,
+#tabelJenisKartu th.sortable::after {
   content: '⇅';
   margin-left: 6px;
   font-size: 0.7rem;
@@ -352,13 +389,19 @@ input.input-error:focus {
   transition: opacity 0.15s ease, color 0.15s ease;
 }
 
-#tabelKaryawan th.sortable.sort-asc::after {
+#tabelKaryawan th.sortable.sort-asc::after,
+#tabelFoto th.sortable.sort-asc::after,
+#tabelKartu th.sortable.sort-asc::after,
+#tabelJenisKartu th.sortable.sort-asc::after {
   content: '▲';
   opacity: 1;
   color: #1e3a8a;
 }
 
-#tabelKaryawan th.sortable.sort-desc::after {
+#tabelKaryawan th.sortable.sort-desc::after,
+#tabelFoto th.sortable.sort-desc::after,
+#tabelKartu th.sortable.sort-desc::after,
+#tabelJenisKartu th.sortable.sort-desc::after {
   content: '▼';
   opacity: 1;
   color: #1e3a8a;
@@ -641,6 +684,10 @@ input.input-error:focus {
   margin-left: -240px;
 }
 
+.sidebar-backdrop {
+  display: none;
+}
+
 .sidebar-brand {
   display: flex;
   align-items: center;
@@ -795,11 +842,17 @@ input.input-error:focus {
 .topbar {
   background: #fff;
   padding: 12px 24px;
-  display: flex;
+  /* 3 kolom: kiri | jam | kanan — kolom kiri & kanan sama lebar (1fr)
+     sehingga jam selalu tepat di tengah topbar */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   border-bottom: 1px solid #e2e8f0;
   gap: 16px;
+}
+
+.topbar-right {
+  justify-self: end;
 }
 
 .topbar-left,
@@ -2079,69 +2132,67 @@ input.input-error:focus {
 @media (max-width: 768px) {
   /* --- App shell --- */
   .app {
-    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 
-  /* --- Sidebar (horizontal mobile) --- */
+  /* --- Sidebar (drawer slide dari kiri) --- */
   .sidebar {
-    width: 100%;
-    flex-direction: row;
-    padding: 10px;
-    overflow-x: auto;
-    transition: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 270px;
+    max-width: 85vw;
     margin-left: 0;
+    padding: 20px 14px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    z-index: 4000;
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.25s ease;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.35);
   }
 
   .app.sidebar-collapsed .sidebar {
-    display: none;
     margin-left: 0;
+    transform: translateX(-105%);
+    visibility: hidden;
+    box-shadow: none;
+    transition: transform 0.25s ease, visibility 0s linear 0.25s;
   }
 
-  .sidebar-brand {
-    padding: 0 12px;
-    border-bottom: none;
-    border-right: 1px solid #2d2d2d;
-    margin: 0;
+  /* Tombol hamburger di topbar selalu tampil di mobile */
+  .app:not(.sidebar-collapsed) .btn-hamburger-topbar {
+    display: flex;
   }
 
-  .brand-text {
-    display: none;
+  /* Latar gelap di belakang drawer */
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    z-index: 3900;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
   }
 
-  .sidebar-nav {
-    flex-direction: row;
-    gap: 6px;
+  .app:not(.sidebar-collapsed) .sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
   }
 
-  .nav-label {
-    display: none;
+  body.sidebar-open-mobile {
+    overflow: hidden;
   }
 
   .nav-item {
-    padding: 10px;
-  }
-
-  .nav-item.active {
-    box-shadow: none;
-  }
-
-  /* --- Nav dropdown sebagai popup di mobile --- */
-  .nav-group {
-    position: relative;
-  }
-
-  .nav-submenu {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    margin: 0;
-    padding: 6px;
-    min-width: 170px;
-    background: #242424;
-    border-left: none;
-    border-radius: 10px;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
-    z-index: 60;
+    padding: 12px 14px;
   }
 
   /* --- Topbar --- */
@@ -2214,4 +2265,200 @@ input.input-error:focus {
   .form-row-2 {
     grid-template-columns: 1fr;
   }
+}
+
+/* ============================================================
+   SCAN OVERLAY — validasi hasil scan layar penuh
+   Dipakai oleh js/scanner.js (markup: #scanOverlay di index.html)
+   ============================================================ */
+.scan-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 2.5vh, 24px);
+  padding: 24px;
+  text-align: center;
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  animation: scanOverlayIn 0.18s ease-out;
+}
+
+.scan-overlay[hidden] { display: none; }
+
+.scan-overlay-ok   { background: #059669; }
+.scan-overlay-warn { background: #d97706; }
+.scan-overlay-err  { background: #dc2626; }
+
+.scan-overlay-icon {
+  width: clamp(110px, 24vmin, 240px);
+  height: clamp(110px, 24vmin, 240px);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(70px, 16vmin, 160px);
+  font-weight: 800;
+  line-height: 1;
+  animation: scanOverlayPop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.scan-overlay-message {
+  font-size: clamp(24px, 5.5vmin, 64px);
+  font-weight: 800;
+  line-height: 1.2;
+  max-width: 92vw;
+}
+
+.scan-overlay-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(8px, 2vh, 18px);
+}
+
+.scan-overlay-detail[hidden] { display: none; }
+
+.scan-overlay-photo {
+  width: clamp(90px, 20vmin, 200px);
+  height: clamp(90px, 20vmin, 200px);
+  border-radius: 50%;
+  overflow: hidden;
+  border: 6px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(40px, 9vmin, 90px);
+  font-weight: 700;
+}
+
+.scan-overlay-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scan-overlay-name {
+  font-size: clamp(22px, 5vmin, 56px);
+  font-weight: 700;
+  max-width: 92vw;
+}
+
+.scan-overlay-meta,
+.scan-overlay-time {
+  font-size: clamp(14px, 2.6vmin, 28px);
+  opacity: 0.9;
+}
+
+.scan-overlay-hint {
+  position: absolute;
+  bottom: 18px;
+  left: 0;
+  right: 0;
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.scan-overlay-bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 8px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.7);
+  transform-origin: left;
+  animation: scanOverlayBar linear forwards;
+}
+
+@keyframes scanOverlayIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scanOverlayPop { from { transform: scale(0.4); } to { transform: scale(1); } }
+@keyframes scanOverlayBar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* ============================================================
+   JAM TOPBAR — tampil di tengah topbar (initClock() di js/main.js)
+   ============================================================ */
+.topbar-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.topbar-clock-time {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.topbar-clock-date {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+@media (max-width: 768px) {
+  .topbar-clock-time { font-size: 1.05rem; letter-spacing: 0.5px; }
+  .topbar-clock-date { display: none; }
+}
+
+@media (max-width: 360px) {
+  .topbar-clock { display: none; }
+  .topbar { grid-template-columns: 1fr auto; }
+}
+
+/* ============================================================
+   PENGATURAN JAM KERJA (js/jamkerja.js)
+   ============================================================ */
+.jam-kerja-card {
+  max-width: 860px;
+}
+
+.jam-kerja-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.jam-kerja-hint {
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.jam-kerja-preview {
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #334155;
+  line-height: 1.6;
+}
+
+.jam-kerja-preview strong { color: #0f172a; }
+.jam-kerja-preview .jam-warn { color: #b45309; }
+
+.jam-kerja-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+@media (max-width: 768px) {
+  .jam-kerja-grid { grid-template-columns: 1fr; }
+  .jam-kerja-actions { flex-direction: column-reverse; }
+  .jam-kerja-actions .btn { width: 100%; }
 }
