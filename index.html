@@ -47,11 +47,12 @@
   </div>
 
   <div class="app">
+    <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <span class="brand-text">Main menu</span>
         <button type="button" class="btn-hamburger btn-hamburger-sidebar" id="btnSidebarClose" aria-label="Tutup menu navigasi" aria-expanded="true" aria-controls="sidebar">
-          <span aria-hidden="true">─</span>
+          <span aria-hidden="true">-</span>
         </button>
       </div>
 
@@ -110,6 +111,26 @@
           </div>
         </div>
 
+        <div class="nav-group">
+          <button type="button" class="nav-item nav-parent" id="navPresensiToggle" aria-expanded="false" aria-controls="navPresensiSubmenu">
+            <span class="nav-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="4" width="16" height="17" rx="2"/>
+                <path d="M9 2v4M15 2v4M4 10h16"/>
+                <path d="m9 16 2 2 4-4"/>
+              </svg>
+            </span>
+            <span class="nav-label">Presensi</span>
+            <span class="nav-caret">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </span>
+          </button>
+          <div class="nav-submenu" id="navPresensiSubmenu">
+            <button type="button" class="nav-subitem" data-tab="presensi">Presensi</button>
+            <button type="button" class="nav-subitem" data-tab="jam-kerja">Pengaturan Jam</button>
+          </div>
+        </div>
+
         <!-- MENU PENGATURAN (Hanya untuk Admin) -->
         <div class="nav-group" id="navPengaturanGroup" style="display: none;">
           <button type="button" class="nav-item nav-parent" id="navPengaturanToggle" aria-expanded="false" aria-controls="navPengaturanSubmenu">
@@ -135,12 +156,18 @@
       <header class="topbar">
         <div class="topbar-left">
           <button type="button" class="btn-hamburger btn-hamburger-topbar" id="btnSidebarToggle" aria-label="Buka menu navigasi" aria-expanded="true" aria-controls="sidebar">
-            <span aria-hidden="true">☰</span>
+            <span aria-hidden="true">≡</span>
           </button>
           <button type="button" class="btn-hamburger btn-hamburger-home" id="btnHome" aria-label="Kembali ke Dashboard" title="Kembali ke Dashboard">
-            <span aria-hidden="true">🏠︎</span>
+            <span aria-hidden="true">⌂</span>
           </button>
           <h2 class="topbar-title" id="topbarTitle">Dashboard</h2>
+        </div>
+
+        <!-- Jam & tanggal di tengah topbar (logika: initClock() di js/main.js) -->
+        <div class="topbar-clock" id="topbarClock" aria-label="Waktu saat ini">
+          <span class="topbar-clock-time" id="clockTime">--:--:--</span>
+          <span class="topbar-clock-date" id="clockDate"></span>
         </div>
 
         <div class="topbar-right">
@@ -237,7 +264,7 @@
             <div class="info-header"><h4>DAFTAR FOTO KARYAWAN</h4><input type="text" class="search-bar" id="searchFoto" placeholder="Cari nama / ID..." autocomplete="off" /></div>
             <div class="table-wrapper">
               <table id="tabelFoto" class="order-table">
-                <thead><tr><th class="col-no">No</th><th>ID</th><th>Nama</th><th>Foto</th><th>Bagian</th><th>Aksi</th></tr></thead>
+                <thead><tr><th class="col-no">No</th><th class="sortable" data-sort="id">ID</th><th class="sortable" data-sort="nama">Nama</th><th>Foto</th><th>Bagian</th><th>Aksi</th></tr></thead>
                 <tbody></tbody>
               </table>
             </div>
@@ -251,7 +278,7 @@
             <div class="info-header"><h4>DAFTAR KARTU</h4><input type="text" class="search-bar" id="searchKartu" placeholder="Cari nama / ID..." autocomplete="off" /></div>
             <div class="table-wrapper">
               <table id="tabelKartu" class="order-table">
-                <thead><tr><th class="col-no">No</th><th>ID</th><th>Nama</th><th>Status Kartu</th><th>Status Cetak</th><th>Aksi</th></tr></thead>
+                <thead><tr><th class="col-no">No</th><th class="sortable" data-sort="id">ID</th><th class="sortable" data-sort="nama">Nama</th><th>Status Kartu</th><th>Status Cetak</th><th>Aksi</th></tr></thead>
                 <tbody></tbody>
               </table>
             </div>
@@ -266,7 +293,7 @@
             <div class="info-header"><h4>DAFTAR JENIS KARTU</h4><input type="text" class="search-bar" id="searchJenisKartu" placeholder="Cari nama / ID / keterangan..." autocomplete="off" /></div>
             <div class="table-wrapper">
               <table id="tabelJenisKartu" class="order-table">
-                <thead><tr><th class="col-no">No</th><th>ID</th><th>Nama</th><th>Keterangan</th><th>Aksi</th></tr></thead>
+                <thead><tr><th class="col-no">No</th><th class="sortable" data-sort="id">ID</th><th class="sortable" data-sort="nama">Nama</th><th>Keterangan</th><th>Aksi</th></tr></thead>
                 <tbody></tbody>
               </table>
             </div>
@@ -277,7 +304,7 @@
         <section class="panel" id="panel-reservasi">
           <div class="panel-actions"><button type="button" class="btn btn-primary" id="btnTambahReservasi">Tambah Reservasi</button></div>
           <div class="info-card">
-            <div class="info-header"><h4>DAFTAR RESERVASI</h4><input type="text" class="search-bar" id="searchReservasi" placeholder="Cari kode transaksi / bagian..." autocomplete="off" /></div>
+            <div class="info-header"><h4>DAFTAR RESERVASI</h4><input type="date" class="search-bar" id="filterReservasiTanggal" title="Filter tanggal" /><input type="text" class="search-bar" id="searchReservasi" placeholder="Cari kode transaksi / bagian..." autocomplete="off" /></div>
             <div class="table-wrapper">
               <table id="tabelReservasi" class="order-table">
                 <thead><tr><th class="col-no">No</th><th>Kode Transaksi</th><th>Tanggal</th><th>Bagian</th><th>Aksi</th></tr></thead>
@@ -301,7 +328,7 @@
             </form>
           </div>
           <div class="info-card mt-16">
-            <div class="info-header"><h4>DAFTAR OVERTIME</h4><input type="text" class="search-bar" id="searchOvertime" placeholder="Cari nama / ID..." autocomplete="off" /></div>
+            <div class="info-header"><h4>DAFTAR OVERTIME</h4><input type="date" class="search-bar" id="filterOvertimeTanggal" title="Filter tanggal" /><input type="text" class="search-bar" id="searchOvertime" placeholder="Cari nama / ID..." autocomplete="off" /></div>
             <div class="table-wrapper">
               <table id="tabelOvertime" class="order-table">
                 <thead><tr><th>ID</th><th>Nama</th><th>Tanggal</th><th>Status</th><th>Aksi</th></tr></thead>
@@ -314,13 +341,65 @@
         <!-- PANEL RELEASE RESERVASI -->
         <section class="panel" id="panel-release-reservasi">
           <div class="info-card">
-            <div class="info-header"><h4>DAFTAR RELEASE RESERVASI</h4></div>
+            <div class="info-header"><h4>DAFTAR RELEASE RESERVASI</h4><input type="date" class="search-bar" id="filterReleaseTanggal" title="Filter tanggal" /></div>
             <div class="table-wrapper">
               <table id="tabelReleaseReservasi" class="order-table">
                 <thead><tr><th class="col-no">No</th><th>Kode Transaksi</th><th>Tanggal</th><th>Status</th><th>Bagian</th><th>Aksi</th></tr></thead>
                 <tbody></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <!-- PANEL PRESENSI -->
+        <section class="panel" id="panel-presensi">
+          <div class="info-card">
+            <div class="info-header">
+              <h4>DAFTAR PRESENSI</h4>
+              <input type="date" class="search-bar" id="filterPresensiTanggal" title="Filter tanggal" />
+              <input type="text" class="search-bar" id="searchPresensi" placeholder="Cari ID / nama / bagian..." autocomplete="off" />
+            </div>
+            <div class="table-wrapper">
+              <table id="tabelPresensi" class="order-table">
+                <thead><tr><th class="col-no">No</th><th>ID</th><th>Nama</th><th>Bagian</th><th>Tanggal</th><th>Jam Masuk</th><th>Jam Keluar</th><th>Status</th><th>Aksi</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- PANEL PENGATURAN JAM KERJA -->
+        <section class="panel" id="panel-jam-kerja">
+          <div class="info-card jam-kerja-card">
+            <div class="info-header">
+              <h4>PENGATURAN JAM KERJA</h4>
+            </div>
+            <form id="formJamKerja" autocomplete="off">
+              <div class="jam-kerja-grid">
+                <div class="form-field">
+                  <label for="jkMasuk">Jam Masuk <span class="req">*</span></label>
+                  <input type="time" id="jkMasuk" step="1" required />
+                  <small class="jam-kerja-hint">Hanya informasi. Absen sebelum jam ini tetap diterima.</small>
+                </div>
+                <div class="form-field">
+                  <label for="jkPulang">Jam Pulang <span class="req">*</span></label>
+                  <input type="time" id="jkPulang" step="1" required />
+                  <small class="jam-kerja-hint">Absen pulang baru bisa dicatat mulai jam ini.</small>
+                </div>
+                <div class="form-field">
+                  <label for="jkLembur">Lembur Setelah (menit) <span class="req">*</span></label>
+                  <input type="number" id="jkLembur" min="0" max="1440" step="any" required />
+                  <small class="jam-kerja-hint">Dihitung dari jam pulang. Boleh desimal (0,5 = 30 detik).</small>
+                </div>
+              </div>
+
+              <div class="jam-kerja-preview" id="jkPreview" aria-live="polite"></div>
+
+              <div class="jam-kerja-actions">
+                <button type="button" class="btn btn-secondary" id="btnDefaultJamKerja">Kembalikan Default</button>
+                <button type="submit" class="btn btn-primary" id="btnSimpanJamKerja">Simpan</button>
+              </div>
+            </form>
           </div>
         </section>
 
@@ -820,6 +899,16 @@
                 <label><input type="checkbox" data-menu="release" data-action="edit" /> Edit</label>
               </div>
               <div class="permission-row">
+                <span class="permission-name">Presensi</span>
+                <label><input type="checkbox" data-menu="presensi" data-action="lihat" /> Lihat</label>
+                <label><input type="checkbox" data-menu="presensi" data-action="hapus" /> Hapus</label>
+              </div>
+              <div class="permission-row">
+                <span class="permission-name">Jam Kerja</span>
+                <label><input type="checkbox" data-menu="jamKerja" data-action="lihat" /> Lihat</label>
+                <label><input type="checkbox" data-menu="jamKerja" data-action="edit" /> Edit</label>
+              </div>
+              <div class="permission-row">
                 <span class="permission-name">Scanner QR</span>
                 <label><input type="checkbox" data-menu="scanner" data-action="pakai" /> Pakai</label>
               </div>
@@ -838,13 +927,31 @@
     </div>
   </div>
 
+  <!-- OVERLAY VALIDASI SCAN (layar penuh) — gaya di css/style.css, logika di js/scanner.js -->
+  <div id="scanOverlay" class="scan-overlay" hidden role="alert" aria-live="assertive">
+    <div class="scan-overlay-icon" id="scanOverlayIcon"></div>
+    <div class="scan-overlay-message" id="scanOverlayMessage"></div>
+    <div class="scan-overlay-detail" id="scanOverlayDetail">
+      <div class="scan-overlay-photo" id="scanOverlayPhoto"></div>
+      <div class="scan-overlay-name" id="scanOverlayName"></div>
+      <div class="scan-overlay-meta" id="scanOverlayMeta"></div>
+      <div class="scan-overlay-time" id="scanOverlayTime"></div>
+    </div>
+    <div class="scan-overlay-hint">Ketuk layar untuk menutup</div>
+    <div class="scan-overlay-bar" id="scanOverlayBar"></div>
+  </div>
+
   <script src="js/utils.js"></script>
   <script src="js/storage.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/akses.js"></script>
   <script src="js/karyawan.js"></script>
   <script src="js/foto.js"></script>
   <script src="js/jeniskartu.js"></script>
   <script src="js/reservasi.js"></script>
+  <script src="js/presensi.js"></script>
+  <script src="js/jamkerja.js"></script>
+  <script src="js/export.js"></script>
   <script src="js/user.js"></script>
   <script src="js/qrcode.js"></script>
   <script src="js/scanner.js"></script>
