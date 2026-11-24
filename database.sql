@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS karyawan (
   foto LONGTEXT NULL,
   absen TINYINT(1) NOT NULL DEFAULT 0,
   absen_at VARCHAR(30) NULL,
+  pulang_at VARCHAR(30) NULL,
   makan TINYINT(1) NOT NULL DEFAULT 0,
   makan_at VARCHAR(30) NULL,
   kupon_kode VARCHAR(50) NULL,
@@ -92,6 +93,26 @@ CREATE TABLE IF NOT EXISTS overtime (
   auto_released TINYINT(1) NOT NULL DEFAULT 0,
   INDEX idx_ot_karyawan (karyawan_id),
   INDEX idx_ot_tanggal (tanggal)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------- presensi (riwayat absensi masuk/pulang) ----------
+CREATE TABLE IF NOT EXISTS presensi (
+  id VARCHAR(80) PRIMARY KEY,
+  karyawan_id VARCHAR(50) NULL,
+  nama VARCHAR(150) NULL,
+  bagian VARCHAR(100) NULL,
+  tanggal VARCHAR(20) NULL,
+  masuk_at VARCHAR(30) NULL,
+  keluar_at VARCHAR(30) NULL,
+  lembur TINYINT(1) NOT NULL DEFAULT 0,
+  INDEX idx_pr_karyawan (karyawan_id),
+  INDEX idx_pr_tanggal (tanggal)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------- pengaturan (key-value; jam kerja) ----------
+CREATE TABLE IF NOT EXISTS pengaturan (
+  kunci VARCHAR(50) PRIMARY KEY,
+  nilai VARCHAR(255) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================================
