@@ -2,11 +2,13 @@
 
   const MASTER_TABS    = ['karyawan', 'foto', 'kartu', 'jenis-kartu'];
   const TRANSAKSI_TABS = ['reservasi', 'reservasi-overtime', 'release-reservasi'];
+  const PRESENSI_TABS  = ['presensi', 'jam-kerja'];
   const PENGATURAN_TABS = ['kelola-user'];
 
   const SUBMENUS = [
     { toggle: 'navMasterToggle',    submenu: 'navMasterSubmenu' },
     { toggle: 'navTransaksiToggle', submenu: 'navTransaksiSubmenu' },
+    { toggle: 'navPresensiToggle',  submenu: 'navPresensiSubmenu' },
     { toggle: 'navPengaturanToggle', submenu: 'navPengaturanSubmenu' },
   ];
 
@@ -19,6 +21,8 @@
     reservasi:            () => Reservasi.render(),
     'reservasi-overtime': () => ReservasiOvertime.render(),
     'release-reservasi':  () => ReleaseReservasi.render(),
+    presensi:             () => Presensi.render(),
+    'jam-kerja':          () => JamKerja.render(),
     'kelola-user':        () => User.render(),
   };
 
@@ -31,6 +35,8 @@
     reservasi:            'Reservasi',
     'reservasi-overtime': 'Edit Reservasi',
     'release-reservasi':  'Release Reservasi',
+    presensi:             'Presensi',
+    'jam-kerja':          'Pengaturan Jam Kerja',
     'kelola-user':        'Kelola User',
   };
 
@@ -72,7 +78,21 @@
     const user = Auth.getUser();
     // Guard: Jika bukan admin, jangan izinkan akses tab pengaturan
     if (PENGATURAN_TABS.includes(tab) && user?.role !== 'admin') {
-      return activateTab('dashboard');
+      return activateTab(Akses.firstAllowedTab() || 'dashboard');
+    }
+
+    // Guard hak akses: tab tanpa izin "lihat" dialihkan ke tab pertama yang boleh
+    if (!Akses.canOpenTab(tab)) {
+      const fallback = Akses.firstAllowedTab();
+      if (fallback && fallback !== tab) return activateTab(fallback);
+      if (!fallback) {
+        document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+        const titleEl = document.getElementById('topbarTitle');
+        if (titleEl) titleEl.textContent = 'Tidak ada hak akses';
+        Scanner.stop();
+        alert('Akun Anda belum memiliki hak akses ke menu mana pun. Hubungi Admin.');
+        return;
+      }
     }
 
     document.querySelectorAll('.nav-item[data-tab]').forEach((btn) => {
@@ -87,15 +107,18 @@
 
     const isMaster    = MASTER_TABS.includes(tab);
     const isTransaksi = TRANSAKSI_TABS.includes(tab);
+    const isPresensi  = PRESENSI_TABS.includes(tab);
     const isPengaturan = PENGATURAN_TABS.includes(tab);
 
     document.getElementById('navMasterToggle')?.classList.toggle('active', isMaster);
     document.getElementById('navTransaksiToggle')?.classList.toggle('active', isTransaksi);
+    document.getElementById('navPresensiToggle')?.classList.toggle('active', isPresensi);
     document.getElementById('navPengaturanToggle')?.classList.toggle('active', isPengaturan);
 
     closeAllSubmenus();
     if (isMaster)    setSubmenuOpen('navMasterToggle', 'navMasterSubmenu', true);
     if (isTransaksi) setSubmenuOpen('navTransaksiToggle', 'navTransaksiSubmenu', true);
+    if (isPresensi)  setSubmenuOpen('navPresensiToggle', 'navPresensiSubmenu', true);
     if (isPengaturan) setSubmenuOpen('navPengaturanToggle', 'navPengaturanSubmenu', true);
 
     updateTopbarTitle(tab);
@@ -135,29 +158,60 @@
   function initSidebarToggle() {
     const btnOpen  = document.getElementById('btnSidebarToggle');
     const btnClose = document.getElementById('btnSidebarClose');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    const sidebar  = document.getElementById('sidebar');
     const app = document.querySelector('.app');
     if (!app) return;
 
     const STORAGE_KEY = 'sidebar_collapsed';
 
-    try {
-      if (localStorage.getItem(STORAGE_KEY) === '1') {
-        app.classList.add('sidebar-collapsed');
-        btnOpen?.setAttribute('aria-expanded', 'false');
-        btnClose?.setAttribute('aria-expanded', 'false');
-      }
-    } catch { /* ignore */ }
+    // Mobile = sidebar menjadi drawer (slide dari kiri) yang default-nya tertutup
+    const mq = window.matchMedia('(max-width: 768px)');
+    const isMobile = () => mq.matches;
 
-    const toggle = () => {
-      const collapsed = app.classList.toggle('sidebar-collapsed');
-      const expanded  = !collapsed;
-      btnOpen?.setAttribute('aria-expanded', String(expanded));
-      btnClose?.setAttribute('aria-expanded', String(expanded));
-      try { localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
+    const readStored = () => {
+      try { return localStorage.getItem(STORAGE_KEY) === '1'; }
+      catch { return false; }
     };
+
+    const setCollapsed = (collapsed, persist) => {
+      app.classList.toggle('sidebar-collapsed', collapsed);
+      document.body.classList.toggle('sidebar-open-mobile', isMobile() && !collapsed);
+      const expanded = String(!collapsed);
+      btnOpen?.setAttribute('aria-expanded', expanded);
+      btnClose?.setAttribute('aria-expanded', expanded);
+      // Preferensi hanya disimpan untuk desktop, supaya state desktop
+      // tidak membuat sidebar mobile "terkunci"/tidak bisa dibuka.
+      if (persist && !isMobile()) {
+        try { localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
+      }
+    };
+
+    const applyForViewport = () => setCollapsed(isMobile() ? true : readStored(), false);
+    applyForViewport();
+
+    const toggle = () => setCollapsed(!app.classList.contains('sidebar-collapsed'), true);
 
     btnOpen?.addEventListener('click', toggle);
     btnClose?.addEventListener('click', toggle);
+    backdrop?.addEventListener('click', () => setCollapsed(true, false));
+
+    // Mobile: tutup drawer setelah memilih menu
+    sidebar?.addEventListener('click', (e) => {
+      if (!isMobile()) return;
+      if (e.target.closest('.nav-item[data-tab], .nav-subitem')) setCollapsed(true, false);
+    });
+
+    // Mobile: tombol Esc menutup drawer
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && isMobile() && !app.classList.contains('sidebar-collapsed')) {
+        setCollapsed(true, false);
+      }
+    });
+
+    // Ganti ukuran layar / rotasi / simulator mobile → sesuaikan state
+    if (mq.addEventListener) mq.addEventListener('change', applyForViewport);
+    else if (mq.addListener) mq.addListener(applyForViewport);
   }
 
   function initModals() {
@@ -225,7 +279,7 @@
 
   function initButtons() {
     document.getElementById('btnHome')?.addEventListener('click', () => {
-      activateTab('dashboard');
+      activateTab(Akses.canOpenTab('dashboard') ? 'dashboard' : (Akses.firstAllowedTab() || 'dashboard'));
       closeAllSubmenus();
       const app = document.querySelector('.app');
       if (app && !app.classList.contains('sidebar-collapsed')) {
@@ -273,6 +327,7 @@
 
     // Reservasi
     document.getElementById('searchReservasi')?.addEventListener('input', () => Reservasi.render());
+    document.getElementById('filterReservasiTanggal')?.addEventListener('input', () => Reservasi.render());
     document.getElementById('btnTambahReservasi')?.addEventListener('click', () => Reservasi.openTambah());
     document.getElementById('formTambahReservasi')?.addEventListener('submit', (e) => { e.preventDefault(); Reservasi.tambah(); });
     document.getElementById('trId')?.addEventListener('input', () => Reservasi.onIdInput());
@@ -281,12 +336,23 @@
     document.getElementById('formOvertime')?.addEventListener('submit', (e) => { e.preventDefault(); ReservasiOvertime.reset(); });
     document.getElementById('otId')?.addEventListener('input', () => ReservasiOvertime.onIdInput());
     document.getElementById('searchOvertime')?.addEventListener('input', () => ReservasiOvertime.render());
+    document.getElementById('filterOvertimeTanggal')?.addEventListener('input', () => ReservasiOvertime.render());
     document.getElementById('formEditOvertime')?.addEventListener('submit', (e) => { e.preventDefault(); ReservasiOvertime.simpanEdit(); });
     document.getElementById('btnBatalEditOvertime')?.addEventListener('click', () => ReservasiOvertime.closeEdit());
     document.getElementById('btnHapusOvertime')?.addEventListener('click', () => ReservasiOvertime.hapus());
 
     // Release Reservasi
+    document.getElementById('filterReleaseTanggal')?.addEventListener('input', () => ReleaseReservasi.render());
     document.getElementById('formEditReleaseReservasi')?.addEventListener('submit', (e) => { e.preventDefault(); ReleaseReservasi.simpanEdit(); });
+
+    // Presensi
+    document.getElementById('searchPresensi')?.addEventListener('input', () => Presensi.render());
+    document.getElementById('filterPresensiTanggal')?.addEventListener('input', () => Presensi.render());
+
+    // Pengaturan Jam Kerja
+    document.getElementById('formJamKerja')?.addEventListener('submit', (e) => { e.preventDefault(); JamKerja.simpan(); });
+    document.getElementById('btnDefaultJamKerja')?.addEventListener('click', () => JamKerja.isiDefault());
+    ['jkMasuk', 'jkPulang', 'jkLembur'].forEach((id) => document.getElementById(id)?.addEventListener('input', () => JamKerja.updatePreview()));
 
     // Kelola User
     document.getElementById('searchUser')?.addEventListener('input', () => User.render());
@@ -401,6 +467,9 @@
       }
     }
 
+    // Terapkan hak akses (sidebar & tombol aksi) sesuai user yang login
+    Akses.apply();
+
     if (!appInitialized) {
       appInitialized = true;
       initTabs();
@@ -415,11 +484,47 @@
       const validTabs = Object.keys(TAB_TITLES);
       activateTab(validTabs.includes(savedTab) ? savedTab : 'dashboard');
     } else {
-      activateTab('dashboard');
+      activateTab(Akses.firstAllowedTab() || 'dashboard');
     }
   }
 
+  /* ------------------------------------------------------------
+     JAM TOPBAR — jam & tanggal real-time di tengah topbar
+     Markup : #topbarClock (#clockTime, #clockDate) di index.html
+     Gaya   : .topbar-clock* di css/style.css
+     Mengikuti waktu perangkat (zona waktu lokal).
+     ------------------------------------------------------------ */
+  function initClock() {
+    const pad = (n) => String(n).padStart(2, '0');
+
+    function tick() {
+      const timeEl = document.getElementById('clockTime');
+      const dateEl = document.getElementById('clockDate');
+      if (!timeEl) return;
+
+      const d = new Date();
+      timeEl.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+      if (dateEl) {
+        dateEl.textContent = d.toLocaleDateString('id-ID', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        });
+      }
+    }
+
+    // Sinkron ke pergantian detik agar tidak melompat
+    const loop = () => {
+      tick();
+      setTimeout(loop, 1000 - (Date.now() % 1000));
+    };
+    loop();
+  }
+
   async function init() {
+    initClock();
     bindLoginForm();
     initSidebarToggle();
 
